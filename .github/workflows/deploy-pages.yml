@@ -1,0 +1,85 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: 🧪 Тестирование и проверка целостности
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout репозитория
+        uses: actions/checkout@v4
+
+      - name: Настройка Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Настройка Node.js 22 (LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 1. Проверка синтаксиса Python-файлов
+        run: |
+          python3 -m py_compile server.py init_db.py
+
+      - name: 2. Проверка работы бэкенда и REST API
+        run: |
+          python3 init_db.py
+          python3 tests/test_server_endpoints.py
+
+      - name: 3. Валидация классов Computer Vision
+        run: |
+          node tests/test_cv_class_validation.js
+
+      - name: 4. Проверка согласованности оценок DPO
+        run: |
+          node tests/test_dpo_scores_consistency.js
+
+      - name: 5. Сквозные E2E тесты кейсов и оффлайн режима
+        run: |
+          node tests/test_e2e_cases_and_state.js
+
+  deploy:
+    name: 🚀 Сборка и деплой на GitHub Pages
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout репозитория
+        uses: actions/checkout@v4
+
+      - name: Подготовка статического сайта
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -r data _site/ 2>/dev/null || true
+          touch _site/.nojekyll
+
+      - name: Настройка GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Загрузка артефакта страниц
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+
+      - name: Деплой на GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
